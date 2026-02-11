@@ -1,0 +1,19 @@
+{
+  "cSpell.language": "en-GB",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.biome": "explicit"
+  },
+  "editor.detectIndentation": false,
+  "editor.insertSpaces": true,
+  "editor.rulers": [80, 120],
+  "editor.tabSize": 2,
+  "files.readonlyInclude": {
+    "pnpm-lock.yaml": true
+  },
+  "files.watcherExclude": {
+    "pnpm-lock.yaml": true
+  },
+  "search.exclude": {
+    "pnpm-lock.yaml": true
+  }
+}
