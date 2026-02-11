@@ -290,10 +290,10 @@ export async function endRound(gameCode: string): Promise<{ success: boolean; er
 
   const q = question as unknown as DbQuestion;
 
-  // Get answer distribution
+  // Get answer distribution + per-player round scores
   const { data: answers } = await supabaseAdmin
     .from('answers')
-    .select('option_id')
+    .select('option_id, player_id, score')
     .eq('game_id', game.id)
     .eq('question_index', game.current_question_index);
 
@@ -301,11 +301,27 @@ export async function endRound(gameCode: string): Promise<{ success: boolean; er
   for (const opt of q.options) {
     distribution[opt.id] = 0;
   }
+  const roundScores: Record<string, number> = {};
   if (answers) {
     for (const ans of answers) {
       distribution[ans.option_id] = (distribution[ans.option_id] || 0) + 1;
+      roundScores[ans.player_id] = Math.round((ans.score as number) * 100) / 100;
     }
   }
+
+  // Fetch updated player scores so clients have fresh totals
+  const { data: players } = await supabaseAdmin
+    .from('players')
+    .select('id, name, team_id, total_score, connected')
+    .eq('game_id', game.id);
+
+  const updatedPlayers = (players ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+    teamId: p.team_id as string,
+    totalScore: Math.round((p.total_score as number) * 100) / 100,
+    connected: p.connected as boolean,
+  }));
 
   await supabaseAdmin.from('games').update({ status: 'round_ended', round_started_at: null }).eq('id', game.id);
 
@@ -313,6 +329,8 @@ export async function endRound(gameCode: string): Promise<{ success: boolean; er
     correctOptionId: q.correct_option_id,
     answerDistribution: distribution,
     totalAnswers: answers?.length ?? 0,
+    roundScores,
+    players: updatedPlayers,
   });
 
   return { success: true };

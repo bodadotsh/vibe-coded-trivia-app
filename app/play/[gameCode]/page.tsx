@@ -231,9 +231,8 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     const correctOption = gs.currentQuestion.options.find((o) => o.id === state.roundEndData?.correctOptionId);
     const selectedOption = state.myAnswer ? gs.currentQuestion.options.find((o) => o.id === state.myAnswer) : null;
 
-    const myPlayerData = gs.players.find((p) => p.id === playerId);
     const isCorrect = state.myAnswer === state.roundEndData.correctOptionId;
-    const score = isCorrect ? (myPlayerData?.totalScore ?? 0) : 0;
+    const score = playerId ? (state.roundEndData.roundScores?.[playerId] ?? 0) : 0;
 
     return (
       <div className="flex min-h-screen items-center justify-center px-4">

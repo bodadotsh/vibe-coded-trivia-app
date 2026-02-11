@@ -14,6 +14,7 @@ interface GameState {
     correctOptionId: string;
     answerDistribution: Record<string, number>;
     totalAnswers: number;
+    roundScores: Record<string, number>;
   } | null;
 }
 
@@ -26,7 +27,13 @@ type GameAction =
   | { type: 'ROUND_ANSWER_COUNT'; payload: { totalAnswers: number; totalPlayers: number } }
   | {
       type: 'ROUND_END';
-      payload: { correctOptionId: string; answerDistribution: Record<string, number>; totalAnswers: number };
+      payload: {
+        correctOptionId: string;
+        answerDistribution: Record<string, number>;
+        totalAnswers: number;
+        roundScores: Record<string, number>;
+        players?: { id: string; name: string; teamId: string; totalScore: number; connected: boolean }[];
+      };
     }
   | { type: 'LEADERBOARD_UPDATE'; payload: LeaderboardData }
   | { type: 'GAME_END'; payload: { leaderboard: LeaderboardData } }
@@ -91,6 +98,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           ...state.gameState,
           status: 'round_ended',
           roundStartedAt: null,
+          players: action.payload.players ?? state.gameState.players,
         },
       };
 
@@ -168,7 +176,6 @@ export function useGameReducer() {
   const [state, dispatch] = useReducer(gameReducer, initialState);
 
   const handleBroadcastEvent = useCallback((event: string, data: unknown) => {
-    // biome-ignore lint: Broadcast data is untyped, safe casts via unknown
     const d = data as never;
     switch (event) {
       case 'game:state':
@@ -183,7 +190,7 @@ export function useGameReducer() {
       case 'round:start':
         dispatch({
           type: 'ROUND_START',
-					payload: d as { question: ClientQuestion; roundStartedAt: string },
+          payload: d as { question: ClientQuestion; roundStartedAt: string },
         });
         break;
       case 'round:answer_count':
@@ -199,6 +206,8 @@ export function useGameReducer() {
             correctOptionId: string;
             answerDistribution: Record<string, number>;
             totalAnswers: number;
+            roundScores: Record<string, number>;
+            players?: { id: string; name: string; teamId: string; totalScore: number; connected: boolean }[];
           },
         });
         break;
