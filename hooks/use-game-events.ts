@@ -11,6 +11,18 @@ interface UseGameEventsOptions {
   onEvent?: (event: string, data: unknown) => void;
 }
 
+const SSE_EVENT_TYPES = [
+  'game:state',
+  'game:start',
+  'round:start',
+  'round:answer_count',
+  'round:end',
+  'leaderboard:update',
+  'game:end',
+  'player:joined',
+  'player:disconnected',
+] as const;
+
 export function useGameEvents({ gameCode, token, role, onEvent }: UseGameEventsOptions) {
   const [connected, setConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -24,19 +36,6 @@ export function useGameEvents({ gameCode, token, role, onEvent }: UseGameEventsO
     }
     handlersRef.current.get(event)!.add(handler);
 
-    // Also register on the EventSource if it's already open
-    const es = eventSourceRef.current;
-    if (es) {
-      es.addEventListener(event, ((e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          handler(data);
-        } catch {
-          handler(e.data);
-        }
-      }) as EventListener);
-    }
-
     return () => {
       handlersRef.current.get(event)?.delete(handler);
     };
@@ -45,52 +44,63 @@ export function useGameEvents({ gameCode, token, role, onEvent }: UseGameEventsO
   useEffect(() => {
     if (!gameCode || !token) return;
 
-    const url = `/api/game/${gameCode}/events?token=${encodeURIComponent(token)}&role=${role}`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
+    let destroyed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentES: EventSource | null = null;
 
-    es.onopen = () => {
-      setConnected(true);
-    };
+    function connect() {
+      if (destroyed) return;
 
-    es.onerror = () => {
-      setConnected(false);
-    };
+      const url = `/api/game/${gameCode}/events?token=${encodeURIComponent(token)}&role=${role}`;
+      const es = new EventSource(url);
+      currentES = es;
+      eventSourceRef.current = es;
 
-    // Register all known event types
-    const eventTypes = [
-      'game:state',
-      'game:start',
-      'round:start',
-      'round:answer_count',
-      'round:end',
-      'leaderboard:update',
-      'game:end',
-      'player:joined',
-      'player:disconnected',
-    ];
+      es.onopen = () => {
+        if (!destroyed) setConnected(true);
+      };
 
-    for (const eventType of eventTypes) {
-      es.addEventListener(eventType, ((e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          // Call registered handlers
-          const handlers = handlersRef.current.get(eventType);
-          if (handlers) {
-            for (const handler of handlers) {
-              handler(data);
-            }
-          }
-          // Call the general onEvent callback
-          onEventRef.current?.(eventType, data);
-        } catch {
-          // ignore parse errors
+      es.onerror = () => {
+        if (destroyed) return;
+        setConnected(false);
+
+        // EventSource has built-in reconnection, but if it enters CLOSED
+        // state (e.g. server returned non-200), we need to reconnect manually.
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          reconnectTimer = setTimeout(connect, 3000);
         }
-      }) as EventListener);
+      };
+
+      for (const eventType of SSE_EVENT_TYPES) {
+        es.addEventListener(eventType, ((e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            // Call registered handlers
+            const handlers = handlersRef.current.get(eventType);
+            if (handlers) {
+              for (const handler of handlers) {
+                handler(data);
+              }
+            }
+            // Call the general onEvent callback
+            onEventRef.current?.(eventType, data);
+          } catch {
+            // ignore parse errors
+          }
+        }) as EventListener);
+      }
     }
 
+    connect();
+
     return () => {
-      es.close();
+      destroyed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (currentES) {
+        currentES.close();
+        currentES = null;
+      }
       eventSourceRef.current = null;
       setConnected(false);
     };

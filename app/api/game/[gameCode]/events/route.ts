@@ -3,6 +3,11 @@ import type { SSEConnection } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+// 2 KB padding to flush through proxy buffers (Cloudflare Tunnel, nginx, etc.)
+// Proxies often buffer the first chunk until they receive enough data.
+const PADDING = `: ${"-".repeat(2048)}\n\n`;
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
 export async function GET(
 	request: Request,
 	{ params }: { params: Promise<{ gameCode: string }> },
@@ -40,6 +45,9 @@ export async function GET(
 
 	const stream = new ReadableStream({
 		start(controller) {
+			// Send padding to flush through proxy buffers immediately
+			controller.enqueue(encoder.encode(PADDING));
+
 			const connection: SSEConnection = {
 				id: connectionId,
 				role,
@@ -53,6 +61,7 @@ export async function GET(
 					}
 				},
 				close() {
+					clearInterval(heartbeat);
 					try {
 						controller.close();
 					} catch {
@@ -63,7 +72,7 @@ export async function GET(
 
 			gameManager.addConnection(gameCode, connection);
 
-			// Send initial state
+			// Send initial state immediately after padding
 			const state = gameManager.getClientGameState(gameCode);
 			try {
 				const msg = `event: game:state\ndata: ${JSON.stringify(state)}\n\n`;
@@ -72,8 +81,19 @@ export async function GET(
 				// ignore
 			}
 
-			// Handle client disconnect
+			// Heartbeat to keep the connection alive through Cloudflare Tunnel.
+			// Without this, the tunnel may close the connection after ~100s of inactivity.
+			const heartbeat = setInterval(() => {
+				try {
+					controller.enqueue(encoder.encode(`: heartbeat\n\n`));
+				} catch {
+					clearInterval(heartbeat);
+				}
+			}, HEARTBEAT_INTERVAL_MS);
+
+			// Clean up on client disconnect
 			request.signal.addEventListener("abort", () => {
+				clearInterval(heartbeat);
 				gameManager.removeConnection(gameCode, connectionId);
 			});
 		},
@@ -82,7 +102,7 @@ export async function GET(
 	return new Response(stream, {
 		headers: {
 			"Content-Type": "text/event-stream",
-			"Cache-Control": "no-cache, no-transform",
+			"Cache-Control": "no-cache, no-store, no-transform",
 			Connection: "keep-alive",
 			"X-Accel-Buffering": "no",
 		},
