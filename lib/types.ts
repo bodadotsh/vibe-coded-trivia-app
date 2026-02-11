@@ -31,27 +31,12 @@ export interface Player {
 	id: string;
 	name: string;
 	teamId: string;
-	token: string;
+	userId: string; // auth.users.id
 	totalScore: number;
 	connected: boolean;
 }
 
-// ─── Round State ──────────────────────────────────────────────────────────────
-
-export interface PlayerAnswer {
-	playerId: string;
-	optionId: string;
-	timeTaken: number; // seconds
-	score: number;
-}
-
-export interface RoundResult {
-	questionIndex: number;
-	answers: PlayerAnswer[];
-	correctOptionId: string;
-}
-
-// ─── Game Session ─────────────────────────────────────────────────────────────
+// ─── Game Status ──────────────────────────────────────────────────────────────
 
 export type GameStatus =
 	| "lobby"
@@ -61,51 +46,65 @@ export type GameStatus =
 	| "showing_results"
 	| "game_over";
 
-export interface GameSession {
-	gameCode: string;
-	title: string;
-	hostPinHash: string;
-	hostPinSalt: string;
-	gamePasswordHash: string;
-	gamePasswordSalt: string;
-	hostToken: string;
-	status: GameStatus;
-	teams: Team[];
-	players: Player[];
-	questions: Question[];
-	currentQuestionIndex: number;
-	roundResults: RoundResult[];
-	roundStartedAt: number | null; // timestamp ms
-	createdAt: number;
-}
+// ─── Database Row Types ───────────────────────────────────────────────────────
 
-// ─── SSE Connection ───────────────────────────────────────────────────────────
-
-export interface SSEConnection {
+export interface DbGame {
 	id: string;
-	role: "host" | "player";
-	playerId?: string;
-	send: (event: string, data: unknown) => void;
-	close: () => void;
+	game_code: string;
+	title: string;
+	host_user_id: string;
+	game_password_hash: string;
+	game_password_salt: string;
+	status: GameStatus;
+	current_question_index: number;
+	round_started_at: string | null;
+	current_round_data: ClientQuestion | null;
+	created_at: string;
 }
 
-// ─── SSE Event Types ──────────────────────────────────────────────────────────
+export interface DbTeam {
+	id: string;
+	game_id: string;
+	name: string;
+	color: string;
+	sort_order: number;
+}
 
-export type SSEEventType =
-	| "game:start"
-	| "round:start"
-	| "round:answer_count"
-	| "round:end"
-	| "leaderboard:update"
-	| "game:end"
-	| "player:joined"
-	| "player:disconnected"
-	| "game:state";
+export interface DbQuestion {
+	id: string;
+	game_id: string;
+	question_index: number;
+	text: string;
+	time_limit: number;
+	correct_option_id: string;
+	options: QuestionOption[];
+}
+
+export interface DbPlayer {
+	id: string;
+	game_id: string;
+	user_id: string;
+	name: string;
+	team_id: string;
+	total_score: number;
+	connected: boolean;
+	created_at: string;
+}
+
+export interface DbAnswer {
+	id: string;
+	game_id: string;
+	player_id: string;
+	question_index: number;
+	option_id: string;
+	time_taken: number;
+	score: number;
+	created_at: string;
+}
 
 // ─── API Request / Response types ─────────────────────────────────────────────
 
 export interface CreateGameRequest {
-	hostPin: string;
 	gamePassword: string;
 	teams: { name: string; color: string }[];
 	questions: Question[];
@@ -114,7 +113,7 @@ export interface CreateGameRequest {
 
 export interface CreateGameResponse {
 	gameCode: string;
-	hostToken: string;
+	gameId: string;
 }
 
 export interface JoinGameRequest {
@@ -125,7 +124,6 @@ export interface JoinGameRequest {
 
 export interface JoinGameResponse {
 	playerId: string;
-	playerToken: string;
 	gameState: ClientGameState;
 }
 
@@ -141,6 +139,7 @@ export interface HostControlRequest {
 
 export interface ClientGameState {
 	gameCode: string;
+	gameId: string;
 	title: string;
 	status: GameStatus;
 	teams: Team[];
@@ -148,8 +147,8 @@ export interface ClientGameState {
 	currentQuestionIndex: number;
 	totalQuestions: number;
 	currentQuestion: ClientQuestion | null;
-	roundResults: ClientRoundResult[];
-	roundStartedAt: number | null;
+	roundStartedAt: string | null;
+	hostUserId: string;
 }
 
 /** Question without the correct answer */

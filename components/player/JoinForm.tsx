@@ -6,7 +6,7 @@ import type { ClientGameState, Team } from '@/lib/types';
 interface JoinFormProps {
   gameCode: string;
   teams: Team[];
-  onJoined: (data: { playerId: string; playerToken: string; gameState: ClientGameState }) => void;
+  onJoined: (data: { playerId: string; gameState: ClientGameState }) => void;
 }
 
 export function JoinForm({ gameCode, teams, onJoined }: JoinFormProps) {
@@ -39,7 +39,7 @@ export function JoinForm({ gameCode, teams, onJoined }: JoinFormProps) {
         return;
       }
 
-      onJoined({ playerId: data.playerId, playerToken: data.playerToken, gameState: data.gameState });
+      onJoined({ playerId: data.playerId, gameState: data.gameState });
     } catch {
       setError('Network error. Please try again.');
     } finally {

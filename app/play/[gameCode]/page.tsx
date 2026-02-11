@@ -9,27 +9,28 @@ import { ResultView } from '@/components/player/ResultView';
 import { Leaderboard } from '@/components/shared/Leaderboard';
 import { useGameEvents } from '@/hooks/use-game-events';
 import { useGameReducer } from '@/hooks/use-game-state';
+import { useSupabase } from '@/hooks/use-supabase';
 import type { ClientGameState } from '@/lib/types';
 
 export default function PlayerPage({ params }: { params: Promise<{ gameCode: string }> }) {
   const { gameCode } = use(params);
   const router = useRouter();
+  const { user, ready } = useSupabase();
   const [playerId, setPlayerId] = useState<string | null>(null);
-  const [playerToken, setPlayerToken] = useState<string | null>(null);
+  const [hasJoined, setHasJoined] = useState(false);
   const [gameExists, setGameExists] = useState<boolean | null>(null);
   const [initialTeams, setInitialTeams] = useState<ClientGameState['teams']>([]);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { state, dispatch, handleSSEEvent, setMyAnswer } = useGameReducer();
+  const { state, dispatch, handleBroadcastEvent, setMyAnswer } = useGameReducer();
 
-  // ─── Fetch game state via REST (works through any proxy) ────────────────
+  // ─── Fetch game state via REST ──────────────────────────────────────────
   const fetchGameState = useCallback(async () => {
     try {
       const res = await fetch(`/api/game/${gameCode}`);
       if (res.ok) {
-        const data = (await res.json()) as ClientGameState;
-        return data;
+        return (await res.json()) as ClientGameState;
       }
     } catch {
       // ignore
@@ -39,56 +40,47 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
 
   // Check if game exists on mount
   useEffect(() => {
+    if (!ready) return;
+
     async function checkGame() {
       const data = await fetchGameState();
       if (data) {
         setInitialTeams(data.teams);
         setGameExists(true);
+
+        // Check if the user already joined this game (page reload)
+        if (user) {
+          const existingPlayer = data.players.find((p: { id: string }) => {
+            // We need to check by stored playerId from sessionStorage
+            const storedId = sessionStorage.getItem(`player-id-${gameCode}`);
+            return storedId && p.id === storedId;
+          });
+          if (existingPlayer) {
+            setPlayerId(existingPlayer.id);
+            setHasJoined(true);
+            dispatch({ type: 'SET_STATE', payload: data });
+          }
+        }
       } else {
         setGameExists(false);
       }
     }
 
-    // Check if player has stored session
-    const storedToken = sessionStorage.getItem(`player-token-${gameCode}`);
-    const storedId = sessionStorage.getItem(`player-id-${gameCode}`);
-    if (storedToken && storedId) {
-      setPlayerToken(storedToken);
-      setPlayerId(storedId);
-    }
-
     checkGame();
-  }, [gameCode, fetchGameState]);
+  }, [gameCode, ready, user, fetchGameState, dispatch]);
 
-  // ─── Hydrate state via REST for returning players (page reload) ─────────
-  useEffect(() => {
-    if (!playerToken || !playerId) return;
-    // If we already have game state from SSE or join response, skip
-    if (state.gameState) return;
-
-    // Fetch state via REST as fallback
-    fetchGameState().then((data) => {
-      if (data) {
-        dispatch({ type: 'SET_STATE', payload: data });
-      }
-    });
-  }, [playerToken, playerId, state.gameState, fetchGameState, dispatch]);
-
-  // ─── REST polling fallback when SSE is not connected ────────────────────
-  // If SSE fails (e.g. Cloudflare Tunnel buffering), poll every 3s to keep
-  // the game state fresh. Stop polling once SSE connects.
+  // Connect to Supabase Broadcast
   const { connected } = useGameEvents({
     gameCode,
-    token: playerToken ?? '',
-    role: 'player',
-    onEvent: handleSSEEvent,
+    enabled: hasJoined,
+    onEvent: handleBroadcastEvent,
   });
 
+  // ─── REST polling fallback when Broadcast is not connected ──────────────
   useEffect(() => {
-    if (!playerToken || !playerId) return;
+    if (!hasJoined) return;
 
     if (connected) {
-      // SSE is working — stop polling
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -96,7 +88,6 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
       return;
     }
 
-    // SSE not connected — poll REST endpoint
     if (!pollRef.current) {
       pollRef.current = setInterval(async () => {
         const data = await fetchGameState();
@@ -112,17 +103,14 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
         pollRef.current = null;
       }
     };
-  }, [connected, playerToken, playerId, fetchGameState, dispatch]);
+  }, [connected, hasJoined, fetchGameState, dispatch]);
 
   // ─── Join handler ───────────────────────────────────────────────────────
   const handleJoined = useCallback(
-    (data: { playerId: string; playerToken: string; gameState: ClientGameState }) => {
+    (data: { playerId: string; gameState: ClientGameState }) => {
       setPlayerId(data.playerId);
-      setPlayerToken(data.playerToken);
-      sessionStorage.setItem(`player-token-${gameCode}`, data.playerToken);
+      setHasJoined(true);
       sessionStorage.setItem(`player-id-${gameCode}`, data.playerId);
-
-      // Hydrate game state immediately from the join response — no SSE needed
       dispatch({ type: 'SET_STATE', payload: data.gameState });
     },
     [gameCode, dispatch],
@@ -131,17 +119,14 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
   // ─── Answer handler ─────────────────────────────────────────────────────
   const handleAnswer = useCallback(
     async (optionId: string) => {
-      if (!playerToken || submitting) return;
+      if (submitting) return;
       setSubmitting(true);
       setMyAnswer(optionId);
 
       try {
         await fetch(`/api/game/${gameCode}/answer`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${playerToken}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ optionId }),
         });
       } catch {
@@ -150,12 +135,24 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
         setSubmitting(false);
       }
     },
-    [gameCode, playerToken, submitting, setMyAnswer],
+    [gameCode, submitting, setMyAnswer],
   );
 
   // ─── Render states ──────────────────────────────────────────────────────
 
-  // Loading
+  // Loading auth
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center space-y-2">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
+          <p className="text-muted">Initializing...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading game check
   if (gameExists === null) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -186,7 +183,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
   }
 
   // Need to join
-  if (!playerToken || !playerId) {
+  if (!hasJoined || !playerId) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 py-8">
         <JoinForm gameCode={gameCode} teams={initialTeams} onJoined={handleJoined} />
@@ -194,7 +191,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     );
   }
 
-  // Waiting for any state (REST or SSE)
+  // Waiting for any state
   const gs = state.gameState;
   if (!gs) {
     return (
@@ -234,7 +231,6 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     const correctOption = gs.currentQuestion.options.find((o) => o.id === state.roundEndData?.correctOptionId);
     const selectedOption = state.myAnswer ? gs.currentQuestion.options.find((o) => o.id === state.myAnswer) : null;
 
-    // Find this player's score for the round
     const myPlayerData = gs.players.find((p) => p.id === playerId);
     const isCorrect = state.myAnswer === state.roundEndData.correctOptionId;
     const score = isCorrect ? (myPlayerData?.totalScore ?? 0) : 0;
@@ -303,7 +299,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     );
   }
 
-  // Fallback — should not happen, but use REST status to show something useful
+  // Fallback
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center space-y-2">

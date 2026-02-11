@@ -11,14 +11,16 @@ import { CountdownTimer } from '@/components/shared/CountdownTimer';
 import { Leaderboard } from '@/components/shared/Leaderboard';
 import { useGameEvents } from '@/hooks/use-game-events';
 import { useGameReducer } from '@/hooks/use-game-state';
+import { useSupabase } from '@/hooks/use-supabase';
 import type { ClientGameState } from '@/lib/types';
 
 export default function HostDashboard({ params }: { params: Promise<{ gameCode: string }> }) {
   const { gameCode } = use(params);
   const router = useRouter();
-  const [hostToken, setHostToken] = useState<string | null>(null);
+  const { user, ready } = useSupabase();
   const [actionLoading, setActionLoading] = useState(false);
-  const { state, dispatch, handleSSEEvent } = useGameReducer();
+  const [isHost, setIsHost] = useState<boolean | null>(null);
+  const { state, dispatch, handleBroadcastEvent } = useGameReducer();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Fetch game state via REST ──────────────────────────────────────────
@@ -34,34 +36,34 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
     return null;
   }, [gameCode]);
 
-  // Get host token from sessionStorage + hydrate initial state via REST
+  // Verify host + hydrate initial state
   useEffect(() => {
-    const token = sessionStorage.getItem(`host-token-${gameCode}`);
-    if (!token) {
-      router.push('/');
-      return;
-    }
-    setHostToken(token);
+    if (!ready || !user) return;
 
-    // Immediately fetch game state via REST so we don't block on SSE
     fetchGameState().then((data) => {
-      if (data) {
-        dispatch({ type: 'SET_STATE', payload: data });
+      if (!data) {
+        router.push('/');
+        return;
       }
+      if (data.hostUserId !== user.id) {
+        router.push('/');
+        return;
+      }
+      setIsHost(true);
+      dispatch({ type: 'SET_STATE', payload: data });
     });
-  }, [gameCode, router, fetchGameState, dispatch]);
+  }, [ready, user, gameCode, router, fetchGameState, dispatch]);
 
-  // Connect to SSE (updates override REST state)
+  // Connect to Supabase Broadcast
   const { connected } = useGameEvents({
     gameCode,
-    token: hostToken ?? '',
-    role: 'host',
-    onEvent: handleSSEEvent,
+    enabled: isHost === true,
+    onEvent: handleBroadcastEvent,
   });
 
-  // ─── REST polling fallback when SSE is not connected ────────────────────
+  // ─── REST polling fallback when Broadcast is not connected ──────────────
   useEffect(() => {
-    if (!hostToken) return;
+    if (!isHost) return;
 
     if (connected) {
       if (pollRef.current) {
@@ -86,20 +88,16 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
         pollRef.current = null;
       }
     };
-  }, [connected, hostToken, fetchGameState, dispatch]);
+  }, [connected, isHost, fetchGameState, dispatch]);
 
   // ─── Host actions ───────────────────────────────────────────────────────
   const handleAction = useCallback(
     async (action: string) => {
-      if (!hostToken) return;
       setActionLoading(true);
       try {
         const res = await fetch(`/api/game/${gameCode}/control`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${hostToken}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action }),
         });
 
@@ -108,7 +106,6 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
         if (!res.ok) {
           console.error('Action failed:', data.error);
         } else if (data.state) {
-          // Hydrate from the control response immediately
           dispatch({ type: 'SET_STATE', payload: data.state });
         }
       } catch (err) {
@@ -117,13 +114,16 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
         setActionLoading(false);
       }
     },
-    [gameCode, hostToken, dispatch],
+    [gameCode, dispatch],
   );
 
-  if (!hostToken) {
+  if (!ready || isHost === null) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted">Loading...</p>
+        <div className="text-center space-y-2">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
+          <p className="text-muted">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -206,7 +206,7 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
               <div className="rounded-xl border border-accent/30 bg-accent/10 p-6 text-center space-y-3">
                 <h2 className="text-2xl font-bold">Game Over!</h2>
                 <p className="text-muted">
-                  {gs.players.length} players &middot; {gs.roundResults.length} rounds played
+                  {gs.players.length} players &middot; {gs.currentQuestionIndex + 1} rounds played
                 </p>
                 <button
                   type="button"

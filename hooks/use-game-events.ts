@@ -1,18 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useEffect, useRef, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
-type EventHandler = (data: unknown) => void;
-
-interface UseGameEventsOptions {
-  gameCode: string;
-  token: string;
-  role: 'host' | 'player';
-  onEvent?: (event: string, data: unknown) => void;
-}
-
-const SSE_EVENT_TYPES = [
-  'game:state',
+const GAME_EVENTS = [
   'game:start',
   'round:start',
   'round:answer_count',
@@ -23,88 +15,41 @@ const SSE_EVENT_TYPES = [
   'player:disconnected',
 ] as const;
 
-export function useGameEvents({ gameCode, token, role, onEvent }: UseGameEventsOptions) {
+interface UseGameEventsOptions {
+  gameCode: string;
+  enabled: boolean;
+  onEvent: (event: string, data: unknown) => void;
+}
+
+export function useGameEvents({ gameCode, enabled, onEvent }: UseGameEventsOptions) {
   const [connected, setConnected] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const handlersRef = useRef<Map<string, Set<EventHandler>>>(new Map());
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
-  const addEventListener = useCallback((event: string, handler: EventHandler) => {
-    if (!handlersRef.current.has(event)) {
-      handlersRef.current.set(event, new Set());
-    }
-    handlersRef.current.get(event)!.add(handler);
-
-    return () => {
-      handlersRef.current.get(event)?.delete(handler);
-    };
-  }, []);
-
   useEffect(() => {
-    if (!gameCode || !token) return;
+    if (!gameCode || !enabled) return;
 
-    let destroyed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let currentES: EventSource | null = null;
+    const supabase = createClient();
+    const channel = supabase.channel(`game:${gameCode}`);
+    channelRef.current = channel;
 
-    function connect() {
-      if (destroyed) return;
-
-      const url = `/api/game/${gameCode}/events?token=${encodeURIComponent(token)}&role=${role}`;
-      const es = new EventSource(url);
-      currentES = es;
-      eventSourceRef.current = es;
-
-      es.onopen = () => {
-        if (!destroyed) setConnected(true);
-      };
-
-      es.onerror = () => {
-        if (destroyed) return;
-        setConnected(false);
-
-        // EventSource has built-in reconnection, but if it enters CLOSED
-        // state (e.g. server returned non-200), we need to reconnect manually.
-        if (es.readyState === EventSource.CLOSED) {
-          es.close();
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-
-      for (const eventType of SSE_EVENT_TYPES) {
-        es.addEventListener(eventType, ((e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            // Call registered handlers
-            const handlers = handlersRef.current.get(eventType);
-            if (handlers) {
-              for (const handler of handlers) {
-                handler(data);
-              }
-            }
-            // Call the general onEvent callback
-            onEventRef.current?.(eventType, data);
-          } catch {
-            // ignore parse errors
-          }
-        }) as EventListener);
-      }
+    for (const eventName of GAME_EVENTS) {
+      channel.on('broadcast', { event: eventName }, ({ payload }) => {
+        onEventRef.current(eventName, payload);
+      });
     }
 
-    connect();
+    channel.subscribe((status) => {
+      setConnected(status === 'SUBSCRIBED');
+    });
 
     return () => {
-      destroyed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (currentES) {
-        currentES.close();
-        currentES = null;
-      }
-      eventSourceRef.current = null;
+      supabase.removeChannel(channel);
+      channelRef.current = null;
       setConnected(false);
     };
-  }, [gameCode, token, role]);
+  }, [gameCode, enabled]);
 
-  return { connected, addEventListener };
+  return { connected };
 }

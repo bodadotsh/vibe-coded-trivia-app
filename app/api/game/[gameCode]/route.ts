@@ -1,4 +1,4 @@
-import { gameManager } from "@/lib/game-manager";
+import { getClientGameState } from "@/lib/game-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +7,7 @@ export async function GET(
 	{ params }: { params: Promise<{ gameCode: string }> },
 ) {
 	const { gameCode } = await params;
-	const state = gameManager.getClientGameState(gameCode);
+	const state = await getClientGameState(gameCode);
 
 	if (!state) {
 		return Response.json({ error: "Game not found" }, { status: 404 });
