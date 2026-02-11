@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trivia Game
+
+Real-time multiplayer trivia game (Kahoot-style) built with Next.js 16, React 19, and Tailwind CSS v4.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Host** creates a game at `/host/create` — sets a host PIN, game password, teams, and uploads a questions JSON file
+2. **Host** receives a 6-character game code and is redirected to the dashboard at `/host/[code]`
+3. **Players** join at `/play/[code]` — enter the game password, a display name, and select a team
+4. **Host** controls the game flow: Start Game → Next Round → End Round → Show Results → End Game
+5. Players answer questions in real-time, scored on correctness and speed
 
-## Learn More
+## Question JSON Format
 
-To learn more about Next.js, take a look at the following resources:
+Upload a JSON file when creating a game. The file should follow this schema:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```json
+{
+  "title": "My Trivia Game",
+  "questions": [
+    {
+      "text": "What is the capital of France?",
+      "options": [
+        { "id": "a", "text": "London" },
+        { "id": "b", "text": "Paris" },
+        { "id": "c", "text": "Berlin" },
+        { "id": "d", "text": "Madrid" }
+      ],
+      "correctOptionId": "b",
+      "timeLimit": 20
+    }
+  ]
+}
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Each question requires:
 
-## Deploy on Vercel
+- `text` — the question text
+- `options` — exactly 4 options, each with `id` and `text`
+- `correctOptionId` — the `id` of the correct option
+- `timeLimit` — seconds for the round (5–120)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+A sample file is provided at `data/sample-questions.json`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scoring
+
+- Correct answer: `Score = 1 × (1 - time_taken / time_limit)`
+- Incorrect/no answer: 0 points
+- Team score: sum of all team members' individual scores
+
+## Tech Stack
+
+- **Next.js 16** with App Router and React Compiler
+- **React 19** with Server-Sent Events for real-time updates
+- **Tailwind CSS v4** with dark theme
+- **lowdb** for local JSON file persistence
+- No external database or deployment needed

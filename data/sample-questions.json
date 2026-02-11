@@ -1,0 +1,115 @@
+{
+  "title": "General Knowledge Trivia",
+  "questions": [
+    {
+      "text": "What is the capital city of Australia?",
+      "options": [
+        { "id": "a", "text": "Sydney" },
+        { "id": "b", "text": "Melbourne" },
+        { "id": "c", "text": "Canberra" },
+        { "id": "d", "text": "Brisbane" }
+      ],
+      "correctOptionId": "c",
+      "timeLimit": 20
+    },
+    {
+      "text": "Which planet is known as the Red Planet?",
+      "options": [
+        { "id": "a", "text": "Venus" },
+        { "id": "b", "text": "Mars" },
+        { "id": "c", "text": "Jupiter" },
+        { "id": "d", "text": "Saturn" }
+      ],
+      "correctOptionId": "b",
+      "timeLimit": 15
+    },
+    {
+      "text": "Who painted the Mona Lisa?",
+      "options": [
+        { "id": "a", "text": "Vincent van Gogh" },
+        { "id": "b", "text": "Pablo Picasso" },
+        { "id": "c", "text": "Leonardo da Vinci" },
+        { "id": "d", "text": "Michelangelo" }
+      ],
+      "correctOptionId": "c",
+      "timeLimit": 15
+    },
+    {
+      "text": "What is the largest ocean on Earth?",
+      "options": [
+        { "id": "a", "text": "Atlantic Ocean" },
+        { "id": "b", "text": "Indian Ocean" },
+        { "id": "c", "text": "Arctic Ocean" },
+        { "id": "d", "text": "Pacific Ocean" }
+      ],
+      "correctOptionId": "d",
+      "timeLimit": 15
+    },
+    {
+      "text": "In what year did the Berlin Wall fall?",
+      "options": [
+        { "id": "a", "text": "1987" },
+        { "id": "b", "text": "1989" },
+        { "id": "c", "text": "1991" },
+        { "id": "d", "text": "1993" }
+      ],
+      "correctOptionId": "b",
+      "timeLimit": 20
+    },
+    {
+      "text": "What element does 'O' represent on the periodic table?",
+      "options": [
+        { "id": "a", "text": "Gold" },
+        { "id": "b", "text": "Osmium" },
+        { "id": "c", "text": "Oxygen" },
+        { "id": "d", "text": "Oganesson" }
+      ],
+      "correctOptionId": "c",
+      "timeLimit": 10
+    },
+    {
+      "text": "Which country has the most World Cup football titles?",
+      "options": [
+        { "id": "a", "text": "Germany" },
+        { "id": "b", "text": "Italy" },
+        { "id": "c", "text": "Argentina" },
+        { "id": "d", "text": "Brazil" }
+      ],
+      "correctOptionId": "d",
+      "timeLimit": 15
+    },
+    {
+      "text": "What is the speed of light in vacuum (approximately)?",
+      "options": [
+        { "id": "a", "text": "300,000 km/s" },
+        { "id": "b", "text": "150,000 km/s" },
+        { "id": "c", "text": "3,000,000 km/s" },
+        { "id": "d", "text": "30,000 km/s" }
+      ],
+      "correctOptionId": "a",
+      "timeLimit": 20
+    },
+    {
+      "text": "Which programming language was created by Brendan Eich in 1995?",
+      "options": [
+        { "id": "a", "text": "Python" },
+        { "id": "b", "text": "Java" },
+        { "id": "c", "text": "JavaScript" },
+        { "id": "d", "text": "TypeScript" }
+      ],
+      "correctOptionId": "c",
+      "timeLimit": 15
+    },
+    {
+      "text": "What is the tallest mountain in the world?",
+      "options": [
+        { "id": "a", "text": "K2" },
+        { "id": "b", "text": "Mount Everest" },
+        { "id": "c", "text": "Kangchenjunga" },
+        { "id": "d", "text": "Lhotse" }
+      ],
+      "correctOptionId": "b",
+      "timeLimit": 10
+    }
+  ]
+}
