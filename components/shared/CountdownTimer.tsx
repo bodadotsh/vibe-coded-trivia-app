@@ -66,6 +66,7 @@ export function CountdownTimer({ roundStartedAt, timeLimit, onExpired, size = 'l
   return (
     <div className={`relative inline-flex items-center justify-center ${isUrgent ? 'animate-countdown-pulse' : ''}`}>
       <svg width="120" height="120" viewBox="0 0 100 100" className="-rotate-90">
+        <title>Countdown Timer</title>
         <circle cx="50" cy="50" r="45" fill="none" stroke="var(--card-border)" strokeWidth="6" />
         <circle
           cx="50"

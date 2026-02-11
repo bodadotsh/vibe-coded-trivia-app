@@ -52,7 +52,7 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
       setIsHost(true);
       dispatch({ type: 'SET_STATE', payload: data });
     });
-  }, [ready, user, gameCode, router, fetchGameState, dispatch]);
+  }, [ready, user, router, fetchGameState, dispatch]);
 
   // Connect to Supabase Broadcast
   const { connected } = useGameEvents({

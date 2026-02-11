@@ -1,5 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./database.types";
+/** biome-ignore-all lint/style/noNonNullAssertion: Supabase client needs non-null keys */
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
 /**
  * Admin Supabase client using the service_role key.
@@ -7,16 +8,13 @@ import type { Database } from "./database.types";
  * Singleton: reused across requests in the same Node.js process.
  */
 const globalForAdmin = globalThis as unknown as {
-	__supabaseAdmin?: ReturnType<typeof createClient<Database>>;
+  __supabaseAdmin?: ReturnType<typeof createClient<Database>>;
 };
 
 export const supabaseAdmin =
-	globalForAdmin.__supabaseAdmin ??
-	createClient<Database>(
-		process.env.NEXT_PUBLIC_SUPABASE_URL!,
-		process.env.SUPABASE_SERVICE_ROLE_KEY!,
-	);
+  globalForAdmin.__supabaseAdmin ??
+  createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-if (process.env.NODE_ENV !== "production") {
-	globalForAdmin.__supabaseAdmin = supabaseAdmin;
+if (process.env.NODE_ENV !== 'production') {
+  globalForAdmin.__supabaseAdmin = supabaseAdmin;
 }

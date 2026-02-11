@@ -194,7 +194,9 @@ export default function CreateGame() {
           {/* Teams */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-muted">Teams</label>
+              <label htmlFor="teams" className="block text-sm font-medium text-muted">
+                Teams
+              </label>
               <button
                 type="button"
                 onClick={addTeam}
@@ -206,7 +208,10 @@ export default function CreateGame() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {teams.map((team, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-xl border border-card-border bg-card p-3">
+                <div
+                  key={team.name}
+                  className="flex items-center gap-2 rounded-xl border border-card-border bg-card p-3"
+                >
                   <input
                     type="color"
                     value={team.color}
@@ -236,8 +241,17 @@ export default function CreateGame() {
 
           {/* Questions Upload */}
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-muted">Questions</label>
-            <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
+            <label htmlFor="questions" className="block text-sm font-medium text-muted">
+              Questions
+            </label>
+            <input
+              id="questions"
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
