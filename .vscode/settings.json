@@ -8,12 +8,15 @@
   "editor.rulers": [80, 120],
   "editor.tabSize": 2,
   "files.readonlyInclude": {
+    "AGENTS.md": true,
     "pnpm-lock.yaml": true
   },
   "files.watcherExclude": {
+    "AGENTS.md": true,
     "pnpm-lock.yaml": true
   },
   "search.exclude": {
+    "AGENTS.md": true,
     "pnpm-lock.yaml": true
   }
 }
