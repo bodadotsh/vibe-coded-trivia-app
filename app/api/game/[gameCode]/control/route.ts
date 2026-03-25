@@ -3,6 +3,7 @@ import {
   endRound,
   getClientGameState,
   nextRound,
+  reconcileGameState,
   showResults,
   startGame,
   verifyHost,
@@ -30,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gam
     }
 
     const body = (await request.json()) as HostControlRequest;
+    await reconcileGameState(gameCode);
 
     let result: { success: boolean; error?: string };
 
@@ -58,7 +60,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ gam
     }
 
     const state = await getClientGameState(gameCode);
-    return Response.json({ success: true, state });
+    return Response.json(
+      { success: true, state },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 });
   }

@@ -7,6 +7,7 @@ import type { Json } from './supabase/database.types';
 import type {
   ClientGameState,
   ClientQuestion,
+  ClientRoundResult,
   DbGame,
   DbPlayer,
   DbQuestion,
@@ -26,11 +27,116 @@ function generateGameCode(): string {
   return code;
 }
 
-// ─── Round timers (in-memory, only thing that can't be in DB) ────────────────
+function calculateRoundEndTime(startedAt: string, timeLimit: number): string {
+  return new Date(new Date(startedAt).getTime() + timeLimit * 1000).toISOString();
+}
 
-const roundTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const previousIndividualRanks = new Map<string, Map<string, number>>();
-const previousTeamRanks = new Map<string, Map<string, number>>();
+function isRoundExpired(game: DbGame): boolean {
+  return (
+    game.status === 'round_active' &&
+    game.round_ends_at !== null &&
+    Date.now() >= new Date(game.round_ends_at).getTime()
+  );
+}
+
+async function getPlayersSnapshot(gameId: string): Promise<ClientGameState['players']> {
+  const { data: players } = await supabaseAdmin
+    .from('players')
+    .select('id, name, team_id, total_score, connected')
+    .eq('game_id', gameId);
+
+  return (players ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+    teamId: p.team_id as string,
+    totalScore: Math.round((p.total_score as number) * 100) / 100,
+    connected: p.connected as boolean,
+  }));
+}
+
+async function buildRoundResult(game: DbGame): Promise<{
+  players: ClientGameState['players'];
+  roundResult: ClientRoundResult;
+}> {
+  const { data: question } = await supabaseAdmin
+    .from('questions')
+    .select('correct_option_id, options')
+    .eq('game_id', game.id)
+    .eq('question_index', game.current_question_index)
+    .single();
+
+  const q = question as unknown as DbQuestion;
+
+  const { data: answers } = await supabaseAdmin
+    .from('answers')
+    .select('option_id, player_id, score')
+    .eq('game_id', game.id)
+    .eq('question_index', game.current_question_index);
+
+  const distribution: Record<string, number> = {};
+  for (const opt of q.options) {
+    distribution[opt.id] = 0;
+  }
+
+  const roundScores: Record<string, number> = {};
+  if (answers) {
+    for (const ans of answers) {
+      distribution[ans.option_id] = (distribution[ans.option_id] || 0) + 1;
+      roundScores[ans.player_id] = Math.round((ans.score as number) * 100) / 100;
+    }
+  }
+
+  return {
+    players: await getPlayersSnapshot(game.id),
+    roundResult: {
+      questionIndex: game.current_question_index,
+      correctOptionId: q.correct_option_id,
+      answerDistribution: distribution,
+      totalAnswers: answers?.length ?? 0,
+      roundScores,
+    },
+  };
+}
+
+async function broadcastRoundEnd(
+  gameCode: string,
+  roundResult: ClientRoundResult,
+  players: ClientGameState['players'],
+) {
+  await broadcastGameEvent(gameCode, 'round:end', {
+    ...roundResult,
+    players,
+  });
+}
+
+async function finalizeRound(game: DbGame): Promise<{
+  didTransition: boolean;
+  players: ClientGameState['players'];
+  roundResult: ClientRoundResult;
+}> {
+  const { players, roundResult } = await buildRoundResult(game);
+
+  const { data: updatedGame } = await supabaseAdmin
+    .from('games')
+    .update({
+      status: 'round_ended',
+      round_started_at: null,
+      round_ends_at: null,
+      last_round_result: roundResult as unknown as Json,
+      last_leaderboard: null,
+    })
+    .eq('id', game.id)
+    .eq('status', 'round_active')
+    .eq('current_question_index', game.current_question_index)
+    .select('id')
+    .maybeSingle();
+
+  return {
+    didTransition: updatedGame !== null,
+    players,
+    roundResult,
+  };
+}
 
 // ─── Game Creation ──────────────────────────────────────────────────────────
 
@@ -193,6 +299,22 @@ export async function joinGame(
 
 // ─── Host Controls ──────────────────────────────────────────────────────────
 
+export async function reconcileGameState(gameCode: string): Promise<DbGame | null> {
+  let game = await getGameByCode(gameCode);
+  if (!game) return null;
+
+  if (isRoundExpired(game)) {
+    const finalizedRound = await finalizeRound(game);
+    if (finalizedRound.didTransition) {
+      await broadcastRoundEnd(gameCode, finalizedRound.roundResult, finalizedRound.players);
+    }
+
+    game = await getGameByCode(gameCode);
+  }
+
+  return game;
+}
+
 export async function startGame(gameCode: string): Promise<{ success: boolean; error?: string }> {
   const game = await getGameByCode(gameCode);
   if (!game) return { success: false, error: 'Game not found' };
@@ -205,7 +327,18 @@ export async function startGame(gameCode: string): Promise<{ success: boolean; e
 
   if (!count || count === 0) return { success: false, error: 'No questions loaded' };
 
-  await supabaseAdmin.from('games').update({ status: 'active_idle', current_question_index: -1 }).eq('id', game.id);
+  await supabaseAdmin
+    .from('games')
+    .update({
+      status: 'active_idle',
+      current_question_index: -1,
+      round_started_at: null,
+      round_ends_at: null,
+      current_round_data: null,
+      last_round_result: null,
+      last_leaderboard: null,
+    })
+    .eq('id', game.id);
 
   await broadcastGameEvent(gameCode, 'game:start', {
     status: 'active_idle',
@@ -236,6 +369,7 @@ export async function nextRound(gameCode: string): Promise<{ success: boolean; e
 
   const q = question as unknown as DbQuestion;
   const now = new Date().toISOString();
+  const roundEndsAt = calculateRoundEndTime(now, q.time_limit);
 
   const clientQuestion: ClientQuestion = {
     text: q.text,
@@ -250,20 +384,18 @@ export async function nextRound(gameCode: string): Promise<{ success: boolean; e
       status: 'round_active',
       current_question_index: nextIndex,
       round_started_at: now,
+      round_ends_at: roundEndsAt,
       current_round_data: clientQuestion as unknown as Json,
+      last_round_result: null,
+      last_leaderboard: null,
     })
     .eq('id', game.id);
 
   await broadcastGameEvent(gameCode, 'round:start', {
     question: clientQuestion,
     roundStartedAt: now,
+    roundEndsAt,
   });
-
-  // Set auto-end timer
-  const timer = setTimeout(() => {
-    endRound(gameCode);
-  }, q.time_limit * 1000);
-  roundTimers.set(gameCode, timer);
 
   return { success: true };
 }
@@ -272,66 +404,10 @@ export async function endRound(gameCode: string): Promise<{ success: boolean; er
   const game = await getGameByCode(gameCode);
   if (!game) return { success: false, error: 'Game not found' };
   if (game.status !== 'round_active') return { success: false, error: 'No active round' };
-
-  // Clear timer
-  const timer = roundTimers.get(gameCode);
-  if (timer) {
-    clearTimeout(timer);
-    roundTimers.delete(gameCode);
+  const finalizedRound = await finalizeRound(game);
+  if (finalizedRound.didTransition) {
+    await broadcastRoundEnd(gameCode, finalizedRound.roundResult, finalizedRound.players);
   }
-
-  // Get the question for correct answer
-  const { data: question } = await supabaseAdmin
-    .from('questions')
-    .select('correct_option_id, options')
-    .eq('game_id', game.id)
-    .eq('question_index', game.current_question_index)
-    .single();
-
-  const q = question as unknown as DbQuestion;
-
-  // Get answer distribution + per-player round scores
-  const { data: answers } = await supabaseAdmin
-    .from('answers')
-    .select('option_id, player_id, score')
-    .eq('game_id', game.id)
-    .eq('question_index', game.current_question_index);
-
-  const distribution: Record<string, number> = {};
-  for (const opt of q.options) {
-    distribution[opt.id] = 0;
-  }
-  const roundScores: Record<string, number> = {};
-  if (answers) {
-    for (const ans of answers) {
-      distribution[ans.option_id] = (distribution[ans.option_id] || 0) + 1;
-      roundScores[ans.player_id] = Math.round((ans.score as number) * 100) / 100;
-    }
-  }
-
-  // Fetch updated player scores so clients have fresh totals
-  const { data: players } = await supabaseAdmin
-    .from('players')
-    .select('id, name, team_id, total_score, connected')
-    .eq('game_id', game.id);
-
-  const updatedPlayers = (players ?? []).map((p) => ({
-    id: p.id as string,
-    name: p.name as string,
-    teamId: p.team_id as string,
-    totalScore: Math.round((p.total_score as number) * 100) / 100,
-    connected: p.connected as boolean,
-  }));
-
-  await supabaseAdmin.from('games').update({ status: 'round_ended', round_started_at: null }).eq('id', game.id);
-
-  await broadcastGameEvent(gameCode, 'round:end', {
-    correctOptionId: q.correct_option_id,
-    answerDistribution: distribution,
-    totalAnswers: answers?.length ?? 0,
-    roundScores,
-    players: updatedPlayers,
-  });
 
   return { success: true };
 }
@@ -343,10 +419,21 @@ export async function showResults(gameCode: string): Promise<{ success: boolean;
     return { success: false, error: 'Round has not ended' };
   }
 
-  await supabaseAdmin.from('games').update({ status: 'showing_results' }).eq('id', game.id);
-
   const leaderboard = await computeLeaderboard(gameCode);
-  await broadcastGameEvent(gameCode, 'leaderboard:update', leaderboard as unknown as Record<string, unknown>);
+  const { data: updatedGame } = await supabaseAdmin
+    .from('games')
+    .update({
+      status: 'showing_results',
+      last_leaderboard: leaderboard as unknown as Json,
+    })
+    .eq('id', game.id)
+    .eq('status', 'round_ended')
+    .select('id')
+    .maybeSingle();
+
+  if (updatedGame) {
+    await broadcastGameEvent(gameCode, 'leaderboard:update', leaderboard as unknown as Record<string, unknown>);
+  }
 
   return { success: true };
 }
@@ -355,16 +442,17 @@ export async function endGame(gameCode: string): Promise<{ success: boolean; err
   const game = await getGameByCode(gameCode);
   if (!game) return { success: false, error: 'Game not found' };
 
-  // Clear timer
-  const timer = roundTimers.get(gameCode);
-  if (timer) {
-    clearTimeout(timer);
-    roundTimers.delete(gameCode);
-  }
-
-  await supabaseAdmin.from('games').update({ status: 'game_over', round_started_at: null }).eq('id', game.id);
-
   const leaderboard = await computeLeaderboard(gameCode);
+
+  await supabaseAdmin
+    .from('games')
+    .update({
+      status: 'game_over',
+      round_started_at: null,
+      round_ends_at: null,
+      last_leaderboard: leaderboard as unknown as Json,
+    })
+    .eq('id', game.id);
 
   const { count: playerCount } = await supabaseAdmin
     .from('players')
@@ -393,6 +481,7 @@ export async function submitAnswer(
   const game = await getGameByCode(gameCode);
   if (!game) return { success: false, error: 'Game not found' };
   if (game.status !== 'round_active') return { success: false, error: 'No active round' };
+  if (isRoundExpired(game)) return { success: false, error: 'Round has ended' };
 
   // Verify player belongs to this game
   const { data: player } = await supabaseAdmin
@@ -481,9 +570,9 @@ export async function submitAnswer(
 export async function computeLeaderboard(gameCode: string): Promise<LeaderboardData> {
   const game = await getGameByCode(gameCode);
   if (!game) return { individual: [], teams: [] };
-
-  const prevIndividual = previousIndividualRanks.get(gameCode) ?? new Map();
-  const prevTeam = previousTeamRanks.get(gameCode) ?? new Map();
+  const previousLeaderboard = game.last_leaderboard;
+  const prevIndividual = new Map(previousLeaderboard?.individual.map((entry) => [entry.id, entry.rank]) ?? []);
+  const prevTeam = new Map(previousLeaderboard?.teams.map((entry) => [entry.id, entry.rank]) ?? []);
 
   // Get players with scores
   const { data: players } = await supabaseAdmin
@@ -540,26 +629,13 @@ export async function computeLeaderboard(gameCode: string): Promise<LeaderboardD
     entry.rank = i + 1;
   });
 
-  // Store ranks for next computation
-  const newPrevIndividual = new Map<string, number>();
-  for (const entry of individual) {
-    newPrevIndividual.set(entry.id, entry.rank);
-  }
-  previousIndividualRanks.set(gameCode, newPrevIndividual);
-
-  const newPrevTeam = new Map<string, number>();
-  for (const entry of teamLeaderboard) {
-    newPrevTeam.set(entry.id, entry.rank);
-  }
-  previousTeamRanks.set(gameCode, newPrevTeam);
-
   return { individual, teams: teamLeaderboard };
 }
 
 // ─── Client-safe Game State ─────────────────────────────────────────────────
 
 export async function getClientGameState(gameCode: string): Promise<ClientGameState | null> {
-  const game = await getGameByCode(gameCode);
+  const game = await reconcileGameState(gameCode);
   if (!game) return null;
 
   const { data: teams } = await supabaseAdmin
@@ -595,6 +671,9 @@ export async function getClientGameState(gameCode: string): Promise<ClientGameSt
     totalQuestions: totalQuestions ?? 0,
     currentQuestion: game.current_round_data,
     roundStartedAt: game.round_started_at,
+    roundEndsAt: game.round_ends_at,
+    roundEndData: game.last_round_result,
+    leaderboard: game.last_leaderboard,
     hostUserId: game.host_user_id,
   };
 }

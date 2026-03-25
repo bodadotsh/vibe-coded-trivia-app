@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useReducer } from 'react';
-import type { ClientGameState, ClientQuestion, LeaderboardData } from '@/lib/types';
+import type { ClientGameState, ClientQuestion, ClientRoundResult, LeaderboardData } from '@/lib/types';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -10,31 +10,21 @@ interface GameState {
   leaderboard: LeaderboardData | null;
   answerCount: { totalAnswers: number; totalPlayers: number } | null;
   myAnswer: string | null;
-  roundEndData: {
-    correctOptionId: string;
-    answerDistribution: Record<string, number>;
-    totalAnswers: number;
-    roundScores: Record<string, number>;
-  } | null;
+  roundEndData: ClientRoundResult | null;
 }
+
+type RoundEndPayload = ClientRoundResult & {
+  players?: { id: string; name: string; teamId: string; totalScore: number; connected: boolean }[];
+};
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 type GameAction =
   | { type: 'SET_STATE'; payload: ClientGameState }
   | { type: 'GAME_START'; payload: { status: string; totalQuestions: number } }
-  | { type: 'ROUND_START'; payload: { question: ClientQuestion; roundStartedAt: string } }
+  | { type: 'ROUND_START'; payload: { question: ClientQuestion; roundStartedAt: string; roundEndsAt: string } }
   | { type: 'ROUND_ANSWER_COUNT'; payload: { totalAnswers: number; totalPlayers: number } }
-  | {
-      type: 'ROUND_END';
-      payload: {
-        correctOptionId: string;
-        answerDistribution: Record<string, number>;
-        totalAnswers: number;
-        roundScores: Record<string, number>;
-        players?: { id: string; name: string; teamId: string; totalScore: number; connected: boolean }[];
-      };
-    }
+  | { type: 'ROUND_END'; payload: RoundEndPayload }
   | { type: 'LEADERBOARD_UPDATE'; payload: LeaderboardData }
   | { type: 'GAME_END'; payload: { leaderboard: LeaderboardData } }
   | {
@@ -53,7 +43,14 @@ type GameAction =
 function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'SET_STATE':
-      return { ...state, gameState: action.payload };
+      return {
+        ...state,
+        gameState: action.payload,
+        leaderboard: action.payload.leaderboard,
+        roundEndData: action.payload.roundEndData,
+        answerCount: action.payload.status === 'round_active' ? state.answerCount : null,
+        myAnswer: state.gameState?.currentQuestionIndex === action.payload.currentQuestionIndex ? state.myAnswer : null,
+      };
 
     case 'GAME_START':
       if (!state.gameState) return state;
@@ -80,6 +77,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           currentQuestion: action.payload.question,
           currentQuestionIndex: action.payload.question.questionIndex,
           roundStartedAt: action.payload.roundStartedAt,
+          roundEndsAt: action.payload.roundEndsAt,
+          roundEndData: null,
+          leaderboard: null,
         },
       };
 
@@ -98,6 +98,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           ...state.gameState,
           status: 'round_ended',
           roundStartedAt: null,
+          roundEndsAt: null,
+          roundEndData: action.payload,
+          leaderboard: null,
           players: action.payload.players ?? state.gameState.players,
         },
       };
@@ -110,6 +113,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         gameState: {
           ...state.gameState,
           status: 'showing_results',
+          leaderboard: action.payload,
         },
       };
 
@@ -121,6 +125,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         gameState: {
           ...state.gameState,
           status: 'game_over',
+          leaderboard: action.payload.leaderboard,
         },
       };
 
@@ -190,7 +195,7 @@ export function useGameReducer() {
       case 'round:start':
         dispatch({
           type: 'ROUND_START',
-          payload: d as { question: ClientQuestion; roundStartedAt: string },
+          payload: d as { question: ClientQuestion; roundStartedAt: string; roundEndsAt: string },
         });
         break;
       case 'round:answer_count':
@@ -202,13 +207,7 @@ export function useGameReducer() {
       case 'round:end':
         dispatch({
           type: 'ROUND_END',
-          payload: d as {
-            correctOptionId: string;
-            answerDistribution: Record<string, number>;
-            totalAnswers: number;
-            roundScores: Record<string, number>;
-            players?: { id: string; name: string; teamId: string; totalScore: number; connected: boolean }[];
-          },
+          payload: d as RoundEndPayload,
         });
         break;
       case 'leaderboard:update':

@@ -66,6 +66,9 @@ export type Database = {
           game_password_salt: string;
           host_user_id: string;
           id: string;
+          last_leaderboard: Json | null;
+          last_round_result: Json | null;
+          round_ends_at: string | null;
           round_started_at: string | null;
           status: string;
           title: string;
@@ -79,6 +82,9 @@ export type Database = {
           game_password_salt: string;
           host_user_id: string;
           id?: string;
+          last_leaderboard?: Json | null;
+          last_round_result?: Json | null;
+          round_ends_at?: string | null;
           round_started_at?: string | null;
           status?: string;
           title: string;
@@ -92,6 +98,9 @@ export type Database = {
           game_password_salt?: string;
           host_user_id?: string;
           id?: string;
+          last_leaderboard?: Json | null;
+          last_round_result?: Json | null;
+          round_ends_at?: string | null;
           round_started_at?: string | null;
           status?: string;
           title?: string;

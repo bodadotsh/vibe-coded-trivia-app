@@ -52,7 +52,10 @@ export interface DbGame {
   status: GameStatus;
   current_question_index: number;
   round_started_at: string | null;
+  round_ends_at: string | null;
   current_round_data: ClientQuestion | null;
+  last_round_result: ClientRoundResult | null;
+  last_leaderboard: LeaderboardData | null;
   created_at: string;
 }
 
@@ -142,6 +145,9 @@ export interface ClientGameState {
   totalQuestions: number;
   currentQuestion: ClientQuestion | null;
   roundStartedAt: string | null;
+  roundEndsAt: string | null;
+  roundEndData: ClientRoundResult | null;
+  leaderboard: LeaderboardData | null;
   hostUserId: string;
 }
 
@@ -158,6 +164,7 @@ export interface ClientRoundResult {
   correctOptionId: string;
   answerDistribution: Record<string, number>;
   totalAnswers: number;
+  roundScores: Record<string, number>;
 }
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────

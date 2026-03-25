@@ -1,4 +1,4 @@
-import { findPlayerByUserId, submitAnswer } from '@/lib/game-manager';
+import { findPlayerByUserId, reconcileGameState, submitAnswer } from '@/lib/game-manager';
 import { createServerSupabase } from '@/lib/supabase/server';
 import type { SubmitAnswerRequest } from '@/lib/types';
 
@@ -15,6 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gam
     }
 
     const { gameCode } = await params;
+    await reconcileGameState(gameCode);
 
     // Find the player record for this user in this game
     const player = await findPlayerByUserId(gameCode, user.id);

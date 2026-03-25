@@ -12,16 +12,29 @@ interface QuestionViewProps {
   selectedOptionId: string | null;
   onSelect: (optionId: string) => void;
   disabled: boolean;
+  onExpired?: () => void;
 }
 
-export function QuestionView({ question, roundStartedAt, selectedOptionId, onSelect, disabled }: QuestionViewProps) {
+export function QuestionView({
+  question,
+  roundStartedAt,
+  selectedOptionId,
+  onSelect,
+  disabled,
+  onExpired,
+}: QuestionViewProps) {
   const hasAnswered = selectedOptionId !== null;
 
   return (
     <div className="flex min-h-[80vh] flex-col px-4 py-6">
       {/* Timer */}
       <div className="flex justify-center mb-6">
-        <CountdownTimer roundStartedAt={roundStartedAt} timeLimit={question.timeLimit} size="lg" />
+        <CountdownTimer
+          roundStartedAt={roundStartedAt}
+          timeLimit={question.timeLimit}
+          size="lg"
+          onExpired={onExpired}
+        />
       </div>
 
       {/* Question */}

@@ -26,7 +26,7 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
   // ─── Fetch game state via REST ──────────────────────────────────────────
   const fetchGameState = useCallback(async () => {
     try {
-      const res = await fetch(`/api/game/${gameCode}`);
+      const res = await fetch(`/api/game/${gameCode}`, { cache: 'no-store' });
       if (res.ok) {
         return (await res.json()) as ClientGameState;
       }
@@ -36,11 +36,19 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
     return null;
   }, [gameCode]);
 
+  const refreshGameState = useCallback(async () => {
+    const data = await fetchGameState();
+    if (data) {
+      dispatch({ type: 'SET_STATE', payload: data });
+    }
+    return data;
+  }, [dispatch, fetchGameState]);
+
   // Verify host + hydrate initial state
   useEffect(() => {
     if (!ready || !user) return;
 
-    fetchGameState().then((data) => {
+    refreshGameState().then((data) => {
       if (!data) {
         router.push('/');
         return;
@@ -50,9 +58,8 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
         return;
       }
       setIsHost(true);
-      dispatch({ type: 'SET_STATE', payload: data });
     });
-  }, [ready, user, router, fetchGameState, dispatch]);
+  }, [ready, user, router, refreshGameState]);
 
   // Connect to Supabase Broadcast
   const { connected } = useGameEvents({
@@ -75,10 +82,7 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
 
     if (!pollRef.current) {
       pollRef.current = setInterval(async () => {
-        const data = await fetchGameState();
-        if (data) {
-          dispatch({ type: 'SET_STATE', payload: data });
-        }
+        await refreshGameState();
       }, 3000);
     }
 
@@ -88,7 +92,7 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
         pollRef.current = null;
       }
     };
-  }, [connected, isHost, fetchGameState, dispatch]);
+  }, [connected, isHost, refreshGameState]);
 
   // ─── Host actions ───────────────────────────────────────────────────────
   const handleAction = useCallback(
@@ -174,7 +178,14 @@ export default function HostDashboard({ params }: { params: Promise<{ gameCode: 
             {/* Timer during active round */}
             {gs.status === 'round_active' && gs.roundStartedAt && gs.currentQuestion && (
               <div className="flex justify-center">
-                <CountdownTimer roundStartedAt={gs.roundStartedAt} timeLimit={gs.currentQuestion.timeLimit} size="lg" />
+                <CountdownTimer
+                  roundStartedAt={gs.roundStartedAt}
+                  timeLimit={gs.currentQuestion.timeLimit}
+                  size="lg"
+                  onExpired={() => {
+                    void refreshGameState();
+                  }}
+                />
               </div>
             )}
 

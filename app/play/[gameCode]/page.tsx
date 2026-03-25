@@ -28,7 +28,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
   // ─── Fetch game state via REST ──────────────────────────────────────────
   const fetchGameState = useCallback(async () => {
     try {
-      const res = await fetch(`/api/game/${gameCode}`);
+      const res = await fetch(`/api/game/${gameCode}`, { cache: 'no-store' });
       if (res.ok) {
         return (await res.json()) as ClientGameState;
       }
@@ -38,12 +38,20 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     return null;
   }, [gameCode]);
 
+  const refreshGameState = useCallback(async () => {
+    const data = await fetchGameState();
+    if (data) {
+      dispatch({ type: 'SET_STATE', payload: data });
+    }
+    return data;
+  }, [dispatch, fetchGameState]);
+
   // Check if game exists on mount
   useEffect(() => {
     if (!ready) return;
 
     async function checkGame() {
-      const data = await fetchGameState();
+      const data = await refreshGameState();
       if (data) {
         setInitialTeams(data.teams);
         setGameExists(true);
@@ -58,7 +66,6 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
           if (existingPlayer) {
             setPlayerId(existingPlayer.id);
             setHasJoined(true);
-            dispatch({ type: 'SET_STATE', payload: data });
           }
         }
       } else {
@@ -67,7 +74,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
     }
 
     checkGame();
-  }, [gameCode, ready, user, fetchGameState, dispatch]);
+  }, [gameCode, ready, user, refreshGameState]);
 
   // Connect to Supabase Broadcast
   const { connected } = useGameEvents({
@@ -90,10 +97,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
 
     if (!pollRef.current) {
       pollRef.current = setInterval(async () => {
-        const data = await fetchGameState();
-        if (data) {
-          dispatch({ type: 'SET_STATE', payload: data });
-        }
+        await refreshGameState();
       }, 3000);
     }
 
@@ -103,7 +107,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
         pollRef.current = null;
       }
     };
-  }, [connected, hasJoined, fetchGameState, dispatch]);
+  }, [connected, hasJoined, refreshGameState]);
 
   // ─── Join handler ───────────────────────────────────────────────────────
   const handleJoined = useCallback(
@@ -222,6 +226,9 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
         selectedOptionId={state.myAnswer}
         onSelect={handleAnswer}
         disabled={submitting}
+        onExpired={() => {
+          void refreshGameState();
+        }}
       />
     );
   }

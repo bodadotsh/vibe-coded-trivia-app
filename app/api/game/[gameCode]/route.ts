@@ -10,5 +10,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
     return Response.json({ error: 'Game not found' }, { status: 404 });
   }
 
-  return Response.json(state);
+  return Response.json(state, {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
 }
