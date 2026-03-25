@@ -91,7 +91,7 @@ A sample file is provided at `data/sample-questions.json`.
 
 ## Scoring
 
-- Correct answer: `Score = 1 × (1 - time_taken / time_limit)`
+- Correct answer: `Score = 100 × (1 - time_taken / time_limit)`
 - Incorrect/no answer: 0 points
 - Team score: sum of all team members' individual scores
 

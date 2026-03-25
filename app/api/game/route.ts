@@ -63,7 +63,9 @@ export async function POST(request: Request) {
     };
 
     return Response.json(response, { status: 201 });
-  } catch {
-    return Response.json({ error: 'Invalid request body' }, { status: 400 });
+  } catch (err) {
+    console.error('[POST /api/game]', err);
+    const message = err instanceof Error ? err.message : 'Invalid request body';
+    return Response.json({ error: message }, { status: 400 });
   }
 }
