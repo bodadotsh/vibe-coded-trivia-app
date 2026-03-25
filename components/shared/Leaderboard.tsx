@@ -88,7 +88,7 @@ function PodiumItem({
       <p className="text-sm font-medium truncate max-w-full text-center" title={entry.name}>
         {entry.name}
       </p>
-      <p className="text-xs text-muted">{entry.score.toFixed(2)}</p>
+      <p className="text-xs text-muted">{Math.round(entry.score)}</p>
       <div
         className={`${height} w-full rounded-t-lg flex items-start justify-center pt-2`}
         style={{ backgroundColor: team?.color ?? medalColor, opacity: 0.85 }}
@@ -141,7 +141,7 @@ function LeaderboardRow({
       </div>
 
       {/* Score */}
-      <span className="font-mono font-bold text-accent">{entry.score.toFixed(2)}</span>
+      <span className="font-mono font-bold text-accent">{Math.round(entry.score)}</span>
     </div>
   );
 }

@@ -280,7 +280,7 @@ export default function PlayerPage({ params }: { params: Promise<{ gameCode: str
                 <div className="rounded-xl border border-accent/30 bg-accent/10 p-4">
                   <p className="text-muted">Your final rank</p>
                   <p className="text-3xl font-bold">
-                    #{myEntry.rank} <span className="text-lg text-accent">({myEntry.score.toFixed(2)} pts)</span>
+                    #{myEntry.rank} <span className="text-lg text-accent">({Math.round(myEntry.score)} pts)</span>
                   </p>
                 </div>
               );

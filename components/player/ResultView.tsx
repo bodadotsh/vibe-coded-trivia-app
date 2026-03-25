@@ -29,7 +29,7 @@ export function ResultView({ isCorrect, score, correctOptionText, selectedOption
           <div className="text-6xl">&#127881;</div>
           <h2 className="text-2xl font-bold text-answer-green">Correct!</h2>
           <div className="animate-score-pop">
-            <span className="text-4xl font-bold text-accent">+{score.toFixed(2)}</span>
+            <span className="text-4xl font-bold text-accent">+{Math.round(score)}</span>
           </div>
         </>
       ) : (

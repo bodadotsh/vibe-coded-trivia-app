@@ -42,7 +42,7 @@ export function PlayerList({ players, teams }: PlayerListProps) {
                   <span className={player.connected ? 'text-foreground' : 'text-muted line-through'}>
                     {player.name}
                   </span>
-                  <span className="font-mono text-xs text-muted">{player.totalScore.toFixed(2)}</span>
+                  <span className="font-mono text-xs text-muted">{Math.round(player.totalScore)}</span>
                 </div>
               ))}
             </div>
